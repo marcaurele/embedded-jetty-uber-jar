@@ -6,9 +6,13 @@ import java.net.URL;
 import javax.websocket.server.ServerContainer;
 
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.session.DefaultSessionCache;
+import org.eclipse.jetty.server.session.SessionCache;
+import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.webapp.WebAppContext;
 import org.eclipse.jetty.websocket.jsr356.server.deploy.WebSocketServerContainerInitializer;
 
 public class ServerMain
@@ -26,6 +30,15 @@ public class ServerMain
         }
     }
 
+    private static URL getResource(String aResource) {
+        return Thread.currentThread().getContextClassLoader().getResource(aResource);
+    }
+
+    private static String getShadedWarUrl() {
+        final String urlStr = getResource("/WEB-INF/web.xml").toString();
+        return urlStr.substring(0, urlStr.length() - 15);
+    }
+
     public void run() throws Exception
     {
         Server server = new Server(8080);
@@ -40,13 +53,20 @@ public class ServerMain
         System.err.printf("Web Root URI: %s%n",webRootUri);
 
         ServletContextHandler context = new ServletContextHandler();
+        WebAppContext webAppContext = new WebAppContext();
         context.setContextPath("/");
+        webAppContext.setContextPath("/");
+        webAppContext.setBaseResource(Resource.newResource(webRootUri));
         context.setBaseResource(Resource.newResource(webRootUri));
         context.setWelcomeFiles(new String[] { "index.html" });
 
         context.getMimeTypes().addMimeMapping("txt","text/plain;charset=utf-8");
+        //SessionHandler sessionHandler = new SessionHandler();
+        //SessionCache sessionCache = new DefaultSessionCache(sessionHandler);
+        //context.setSessionHandler(sessionHandler);
+        //context.getSessionHandler().setMaxInactiveInterval(240);
 
-        server.setHandler(context);
+        server.setHandler(webAppContext);
 
         // Add WebSocket endpoints
         ServerContainer wsContainer = WebSocketServerContainerInitializer.configureContext(context);
@@ -54,11 +74,14 @@ public class ServerMain
 
         // Add Servlet endpoints
         context.addServlet(TimeServlet.class,"/time/");
+        context.addServlet(SessionServlet.class, "/session/");
+        webAppContext.addServlet(SessionServlet.class, "/session/");
 
         context.addServlet(DefaultServlet.class,"/");
 
         // Start Server
         server.start();
+        webAppContext.getSessionHandler().setMaxInactiveInterval(10);
         server.join();
     }
 }
